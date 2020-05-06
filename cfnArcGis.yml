@@ -1,0 +1,271 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creates a server subnet with the ArcGisServer AMI, a DB Subnet with Oracle and SQL Server RDS instances, and an S3 bucket for the webapp 
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "General Configuration"
+        Parameters: 
+          - VPCSandBox
+      - 
+        Label: 
+          default: "S3 Bucket for Webapp Configuration"
+        Parameters: 
+          - BucketName
+          - IndexFileName
+      - 
+        Label: 
+          default: "ArcGis Server instance Configuration"
+        Parameters: 
+          - SubnetCIDR
+          - InstanceSize
+          - SecGroupIdsEC2 
+          - ImageIDeC2
+          - KeyName
+      - 
+        Label: 
+          default: "SQL Server Configuration"
+        Parameters: 
+          - SQLServerInstanceType
+          - Subnet2CIDR
+          - SQLServerUsername
+          - SQLServerPassword
+          - SecGroupIdsSQLServer
+          
+      -
+        Label: 
+          default: "Oracle Configuration"
+        Parameters:
+          - OracleDBInstanceType
+          - Subnet3CIDR
+          - OracleDBUsername 
+          - OracleDBPassword
+          - SecGroupIdsOracle
+
+    ParameterLabels: 
+      VPCSandBox: 
+        default: "Which VPC should this be deployed to?"
+      ClusterLauncherType:
+        default: "Which Availability Zone should this be deployed to?"
+      BucketName:
+        default: "Name of the bucket to store the webapp for maps"
+      IndexFileName:
+        default: "name of the file for the index page on the maps webapp"
+      SubnetCIDR:
+        default: Private Subnet CIDR
+      InstanceSize:
+        default: Instance Size for ArcGis server
+      KeyName:
+        default: The keypair name to connect using RDP
+      SecGroupIdsEC2:
+        default: Security Group name for ArcGis Server instance (port 6443 for communication)
+      ImageIDeC2:
+        default: AMI id for ArcGis server installation
+      Subnet2CIDR:
+        default: Private Subnet CIDR for DB
+      SecGroupIdsOracle:
+        default: Security Group for Oracle DB instance (port 1521)
+      SecGroupIdsSQLServer:
+        default: Security Group for Sql Server DB instance (port 1433)
+
+Parameters:
+  VPCSandBox:
+    Description: The SandBox VPC
+    Type: "AWS::EC2::VPC::Id"
+  BucketName:
+    Description: Name of the bucket for the webapp
+    Type: String
+    MinLength: 8
+    MaxLength: 64
+  IndexFileName:
+    Description: The name of the index document for the website.
+    Type: String
+    Default: "index.html"
+    MinLength: 8
+    MaxLength: 64  
+  SubnetCIDR:
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Default: 172.32.10.0/28
+    Description: VPC CIDR Block for the ArcGis Server Subnet (eg 10.0.0.0/24)
+    Type: String
+  Subnet2CIDR:
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Default: 172.32.20.0/28
+    Description: VPC CIDR Block for the DB Subnet (eg 10.0.0.0/24)
+    Type: String
+  Subnet3CIDR:
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Default: 172.32.30.0/28
+    Description: VPC CIDR Block for the secondary DB Subnet (eg 10.0.0.0/24)
+    Type: String
+  InstanceSize:
+    Default: m5.2xlarge
+    Description: Instance Type for the ArcGis Server
+    Type: String
+  KeyName:
+    Description: KeyPair name
+    Type: AWS::EC2::KeyPair::KeyName
+  SecGroupIdsEC2:
+    Description: Security Group for the EC2 instance running ArcGis Server
+    Type: "List<AWS::EC2::SecurityGroup::Id>"
+    ConstraintDescription: must be list of EC2 security group ids
+  ImageIDeC2:
+    Default: ami-0c278895328cddfdd
+    Description: AMI Id for EC2 ArcGis Server
+    Type: AWS::EC2::Image::Id
+  SQLServerInstanceType:
+    Default: db.t3.xlarge
+    Description: Instance type for SQL Server
+    Type: String
+  SQLServerUsername:
+    NoEcho: 'true'
+    Description: Username for SQL Server database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+  SQLServerPassword:
+    NoEcho: 'true'
+    Description: Password for SQL Server database access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+  OracleDBInstanceType:
+    Default: db.m5.2xlarge
+    Description: Instance type for Oracle DB
+    Type: String
+  OracleDBUsername:
+    NoEcho: 'true'
+    Description: Username for Oracle database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+  OracleDBPassword:
+    NoEcho: 'true'
+    Description: Password for Oracle database access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+  SecGroupIdsSQLServer: 
+    Description: Security Group for the SQL Server DB
+    Type: "List<AWS::EC2::SecurityGroup::Id>"
+    ConstraintDescription: must be list of security group ids
+  SecGroupIdsOracle: 
+    Description: Security Group for the Oracle DB
+    Type: "List<AWS::EC2::SecurityGroup::Id>"
+    ConstraintDescription: must be list of  security group ids
+
+
+Resources:
+  BucketWebapp:
+    Type: 'AWS::S3::Bucket'
+    #TODO change to IIS
+    Properties:
+      BucketName: 
+        !Join
+          - '-'
+          - - !Ref BucketName
+            - !Ref AWS::StackName
+      WebsiteConfiguration:
+        IndexDocument: !Ref IndexFileName
+      CorsConfiguration:
+        CorsRules:
+          -
+            AllowedOrigins: 
+              - "*"
+            AllowedMethods: 
+              - POST
+              - GET
+              - PUT
+              - HEAD
+            AllowedHeaders: 
+              - "*"
+  ServerSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties: 
+      VpcId: !Ref VPCSandBox
+      CidrBlock: !Ref SubnetCIDR
+      AvailabilityZone: { "Fn::Select": [ "0", { "Fn::GetAZs": "" } ] } 
+  DBSubNetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties: 
+      VpcId: !Ref VPCSandBox
+      CidrBlock: !Ref Subnet2CIDR
+      AvailabilityZone: { "Fn::Select": [ "0", { "Fn::GetAZs": "" } ] }
+  DBSubNetB:
+    Type: 'AWS::EC2::Subnet'
+    Properties: 
+      VpcId: !Ref VPCSandBox
+      CidrBlock: !Ref Subnet3CIDR
+      AvailabilityZone: { "Fn::Select": [ "1", { "Fn::GetAZs": "" } ] }
+  ArcGisServer:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      AvailabilityZone: { "Fn::Select": [ "0", { "Fn::GetAZs": "" } ] }
+      InstanceType: !Ref InstanceSize
+      ImageId: !Ref ImageIDeC2
+      KeyName: !Ref KeyName
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: "false" 
+          #TODO: aca hay que agregar un NAT Gateway para activacion licencia, o registro local por archivo?
+          DeviceIndex: "0"
+          GroupSet: !Ref SecGroupIdsEC2
+          SubnetId: !Ref ServerSubnet
+      BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs:
+            VolumeSize: 25
+  SQLServer:
+    Type: 'AWS::RDS::DBInstance'
+    Properties: 
+      AllocatedStorage: 20
+      AvailabilityZone: { "Fn::Select": [ "0", { "Fn::GetAZs": "" } ] }
+      DBInstanceClass: !Ref SQLServerInstanceType
+      VPCSecurityGroups: !Ref SecGroupIdsSQLServer
+      Engine: sqlserver-ee
+      EngineVersion: 14.00.3281.6.v1
+      MasterUsername: !Ref SQLServerUsername
+      MasterUserPassword: !Ref SQLServerPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      LicenseModel: license-included
+
+  OracleDB:
+    Type: 'AWS::RDS::DBInstance'
+    Properties: 
+      AllocatedStorage: 32
+      AvailabilityZone: { "Fn::Select": [ "0", { "Fn::GetAZs": "" } ] }
+      DBInstanceClass: !Ref OracleDBInstanceType
+      VPCSecurityGroups: !Ref SecGroupIdsOracle
+      Engine: oracle-ee
+      EngineVersion: 12.2.0.1.ru-2020-01.rur-2020-01.r1 
+      MasterUsername: !Ref OracleDBUsername
+      MasterUserPassword: !Ref OracleDBPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup 
+      LicenseModel: bring-your-own-license
+  
+  DBSubnetGroup:
+   Type : AWS::RDS::DBSubnetGroup
+   Properties:
+      DBSubnetGroupDescription: DB Subnet Group
+      SubnetIds: 
+        - !Ref DBSubNetA
+        - !Ref DBSubNetB
+
+Outputs:
+  ArcGisServerIP:
+    Description: The IP of the ArcGisServer
+    Value: !GetAtt ArcGisServer.PrivateIp
+  ArcGisServerDNS:
+    Description: The DNS of the ArcGisServer
+    Value: !GetAtt ArcGisServer.PrivateDnsName
+  BucketName:
+    Description: Web app bucket ARN
+    Value: !GetAtt BucketWebapp.WebsiteURL
